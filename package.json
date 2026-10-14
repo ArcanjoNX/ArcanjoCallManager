@@ -1,7 +1,7 @@
 {
   "name": "arcanjo-call-manager",
   "version": "1.0.0",
-  "description": "Bot Discord com painel, botão e modal para criação de calls",
+  "description": "Discord Call Manager bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

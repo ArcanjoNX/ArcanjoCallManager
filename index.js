@@ -1,351 +1,149 @@
-
-require("dotenv").config();
-
+require('dotenv').config();
 const {
-  Client,
-  GatewayIntentBits,
-  SlashCommandBuilder,
-  REST,
-  Routes,
-  ChannelType,
-  PermissionFlagsBits,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  EmbedBuilder
-} = require("discord.js");
+  Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, Events
+} = require('discord.js');
 
-const required = ["DISCORD_TOKEN", "CLIENT_ID", "GUILD_ID"];
-
-for (const key of required) {
-  if (!process.env[key] || !process.env[key].trim()) {
-    console.error(`Variável ausente no ambiente: ${key}`);
-    process.exit(1);
-  }
+const required = ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID'];
+const missing = required.filter(k => !process.env[k]);
+if (missing.length) {
+  console.error(`Variáveis ausentes: ${missing.join(', ')}`);
+  process.exit(1);
 }
-
 const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID } = process.env;
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
-});
-
-// Controle das calls durante a execução atual.
+const VOICE_CATEGORY_ID = process.env.VOICE_CATEGORY_ID || null;
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 const activeCalls = new Map();
-const creatingCalls = new Set();
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("painel")
-    .setDescription("Publica o painel futurista de criação de calls")
-    .addChannelOption(option =>
-      option
-        .setName("categoria")
-        .setDescription("Categoria onde as salas de voz serão criadas")
-        .addChannelTypes(ChannelType.GuildCategory)
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .toJSON()
-];
+const command = new SlashCommandBuilder()
+  .setName('callmanager')
+  .setDescription('Abre o painel para criar sua call personalizada.');
 
-async function registerCommands() {
-  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
-
-  console.log("Comando /painel registrado.");
+async function registerCommand() {
+  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: [command.toJSON()] });
+  console.log('Comando /callmanager registrado.');
 }
 
-client.once("ready", () => {
-  console.log(`Bot conectado como ${client.user.tag}`);
-});
+function panelEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x9B5CFF)
+    .setAuthor({ name: 'ARCANJO • CALL CENTER' })
+    .setTitle('╔═══ ⚡ CENTRAL DE CALLS ⚡ ═══╗')
+    .setDescription('Crie sua sala de voz personalizada em poucos segundos.\\n\\n✦ Clique no botão abaixo\\n✦ Escolha o nome da sua sala\\n✦ Entre na call e chame seus amigos')
+    .addFields(
+      { name: '🟢 STATUS', value: 'Sistema operacional', inline: true },
+      { name: '🔊 CANAIS', value: 'Criação automática', inline: true }
+    )
+    .setFooter({ text: 'Arcanjo Call Manager • Sistema de Calls' })
+    .setTimestamp();
+}
 
-client.on("interactionCreate", async interaction => {
+function cleanName(name) {
+  return name.trim().replace(/\\s+/g, '-').replace(/[\\/#@:`<>|*?"]/g, '').slice(0, 95) || 'call-personalizada';
+}
+
+client.once(Events.ClientReady, readyClient => console.log(`Bot conectado como ${readyClient.user.tag}`));
+
+client.on(Events.InteractionCreate, async interaction => {
   try {
-    if (!interaction.inGuild()) return;
-
-    // PAINEL PRINCIPAL
-    if (
-      interaction.isChatInputCommand() &&
-      interaction.commandName === "painel"
-    ) {
-      const category = interaction.options.getChannel("categoria", true);
-
-      const embed = new EmbedBuilder()
-        .setColor(0x9B5CFF)
-        .setAuthor({
-          name: "ARCANJO • CALL CENTER",
-          iconURL: client.user.displayAvatarURL()
-        })
-        .setTitle("╔═══ ⚡ CENTRAL DE CALLS ⚡ ═══╗")
-        .setDescription(
-          [
-            "## 🚀 SUA SALA. SUAS REGRAS.",
-            "",
-            "Entre na experiência **Arcanjo Call Manager** e crie sua própria sala de voz em segundos.",
-            "",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "",
-            "### ✦ COMO FUNCIONA",
-            "",
-            "🔹 **01 — INICIAR**",
-            "Clique no botão neon abaixo.",
-            "",
-            "🔹 **02 — PERSONALIZAR**",
-            "Escolha o nome da sua sala.",
-            "",
-            "🔹 **03 — CONECTAR**",
-            "Acesse sua nova call e chame seus amigos.",
-            "",
-            "━━━━━━━━━━━━━━━━━━━━",
-            "",
-            "### 🛡️ REGRAS DO SISTEMA",
-            "• Cada usuário pode ter **1 call ativa**.",
-            "• Exclua sua sala atual para liberar outra.",
-            "• Use um nome apropriado para sua sala.",
-            "",
-            "✨ **Sua próxima conversa começa aqui.**"
-          ].join("\n")
-        )
-        .addFields(
-          {
-            name: "🟢 STATUS DO SISTEMA",
-            value: "```ansi\n\u001b[1;32m● SISTEMA OPERACIONAL\u001b[0m\n```",
-            inline: true
-          },
-          {
-            name: "🔊 TIPO DE SALA",
-            value: "```fix\nCANAL DE VOZ\n```",
-            inline: true
-          }
-        )
-        .setFooter({
-          text: "ARCANJO CALL MANAGER  •  Tecnologia e conexão",
-          iconURL: client.user.displayAvatarURL()
-        })
-        .setTimestamp();
-
-      const button = new ButtonBuilder()
-        .setCustomId(`create_call:${category.id}`)
-        .setLabel("CRIAR MINHA CALL")
-        .setEmoji("🚀")
-        .setStyle(ButtonStyle.Success);
-
-      const row = new ActionRowBuilder().addComponents(button);
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: [row]
-      });
-
+    if (interaction.isChatInputCommand() && interaction.commandName === 'callmanager') {
       await interaction.reply({
-        content: "✅ **Painel Arcanjo publicado com sucesso!**",
-        ephemeral: true
+        embeds: [panelEmbed()],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('create_call').setLabel('CRIAR MINHA CALL').setEmoji('🚀').setStyle(ButtonStyle.Primary)
+        )]
       });
-
       return;
     }
 
-    // CLIQUE NO BOTÃO
-    if (
-      interaction.isButton() &&
-      interaction.customId.startsWith("create_call:")
-    ) {
-      const categoryId = interaction.customId.split(":")[1];
-      const existingId = activeCalls.get(interaction.user.id);
-
-      if (existingId) {
-        const existing = await interaction.guild.channels
-          .fetch(existingId)
-          .catch(() => null);
-
+    if (interaction.isButton() && interaction.customId === 'create_call') {
+      const activeId = activeCalls.get(interaction.user.id);
+      if (activeId) {
+        const existing = interaction.guild?.channels.cache.get(activeId);
         if (existing) {
-          await interaction.reply({
-            content:
-              `⚠️ Você já possui uma call ativa: **${existing.name}**.\n\n` +
-              "🗑️ Exclua sua sala atual antes de criar outra.",
-            ephemeral: true
-          });
+          await interaction.reply({ content: `Você já possui uma call ativa: ${existing}. Apague essa sala antes de criar outra.`, ephemeral: true });
           return;
         }
-
         activeCalls.delete(interaction.user.id);
       }
-
-      const modal = new ModalBuilder()
-        .setCustomId(`call_name:${categoryId}`)
-        .setTitle("🚀 Personalizar sua Call");
-
-      const nameInput = new TextInputBuilder()
-        .setCustomId("call_name")
-        .setLabel("✦ NOME DA SUA SALA")
-        .setPlaceholder("Ex.: ⚡・resenha-do-arcanjo")
-        .setStyle(TextInputStyle.Short)
-        .setMinLength(2)
-        .setMaxLength(90)
-        .setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(nameInput)
-      );
-
+      const modal = new ModalBuilder().setCustomId('call_name').setTitle('🚀 Personalizar sua Call');
+      const input = new TextInputBuilder()
+        .setCustomId('channel_name').setLabel('✦ NOME DA SUA SALA')
+        .setPlaceholder('Ex.: ⚡・resenha-do-arcanjo')
+        .setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(100).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
       await interaction.showModal(modal);
       return;
     }
 
-    // ENVIO DO FORMULÁRIO
-    if (
-      interaction.isModalSubmit() &&
-      interaction.customId.startsWith("call_name:")
-    ) {
-      const categoryId = interaction.customId.split(":")[1];
-      const name = interaction.fields
-        .getTextInputValue("call_name")
-        .trim();
-
-      if (!name || name.length < 2) {
-        await interaction.reply({
-          content: "⚠️ Digite um nome válido com pelo menos 2 caracteres.",
-          ephemeral: true
-        });
+    if (interaction.isModalSubmit() && interaction.customId === 'call_name') {
+      await interaction.deferReply({ ephemeral: true });
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.editReply('Não consegui identificar o servidor. Tente novamente dentro do servidor.');
         return;
       }
 
-      if (creatingCalls.has(interaction.user.id)) {
-        await interaction.reply({
-          content: "⏳ Sua call já está sendo criada. Aguarde um instante!",
-          ephemeral: true
-        });
-        return;
-      }
-
-      const existingId = activeCalls.get(interaction.user.id);
-
-      if (existingId) {
-        const existing = await interaction.guild.channels
-          .fetch(existingId)
-          .catch(() => null);
-
-        if (existing) {
-          await interaction.reply({
-            content: `⚠️ Você já possui uma call ativa: <#${existing.id}>`,
-            ephemeral: true
-          });
+      const oldId = activeCalls.get(interaction.user.id);
+      if (oldId) {
+        const oldChannel = guild.channels.cache.get(oldId);
+        if (oldChannel) {
+          await interaction.editReply(`Você já possui uma call ativa: ${oldChannel}.`);
           return;
         }
-
         activeCalls.delete(interaction.user.id);
       }
 
-      const category = await interaction.guild.channels
-        .fetch(categoryId)
-        .catch(() => null);
-
-      if (!category || category.type !== ChannelType.GuildCategory) {
-        await interaction.reply({
-          content:
-            "❌ **Categoria não encontrada.**\n" +
-            "Peça a um administrador para publicar o painel novamente.",
-          ephemeral: true
-        });
-        return;
+      let parent = null;
+      if (VOICE_CATEGORY_ID) {
+        parent = guild.channels.cache.get(VOICE_CATEGORY_ID) ||
+          await guild.channels.fetch(VOICE_CATEGORY_ID).catch(() => null);
+        if (!parent || parent.type !== ChannelType.GuildCategory) {
+          await interaction.editReply('A categoria definida em VOICE_CATEGORY_ID não foi encontrada ou não é uma categoria. Confira essa variável no Render.');
+          return;
+        }
       }
 
-      // Responde imediatamente para evitar carregamento infinito.
-      creatingCalls.add(interaction.user.id);
-      await interaction.deferReply({ ephemeral: true });
+      const options = {
+        name: cleanName(interaction.fields.getTextInputValue('channel_name')),
+        type: ChannelType.GuildVoice,
+        reason: `Call criada por ${interaction.user.tag}`
+      };
+      if (parent) options.parent = parent.id;
 
-      try {
-        const safeName = name
-          .replace(/[\\/@#:`]/g, "")
-          .replace(/\s+/g, "-")
-          .slice(0, 90) || `call-${interaction.user.username}`;
-
-        const channel = await interaction.guild.channels.create({
-          name: safeName,
-          type: ChannelType.GuildVoice,
-          parent: category.id,
-          reason: `Call criada por ${interaction.user.tag}`
-        });
-
-        activeCalls.set(interaction.user.id, channel.id);
-
-        await interaction.editReply({
-          content: [
-            "╔══════════════════════╗",
-            "   ✅ **CALL CRIADA COM SUCESSO!**",
-            "╚══════════════════════╝",
-            "",
-            "🚀 Sua sala está pronta para uso.",
-            "",
-            `🔊 **Nome:** ${channel.name}`,
-            `📍 **Canal:** <#${channel.id}>`,
-            "",
-            "✨ Clique no canal acima para entrar na sua call!",
-            "",
-            "🛡️ O sistema registrou sua sala ativa."
-          ].join("\n")
-        });
-
-        console.log(
-          `Call criada: ${channel.name} | Usuário: ${interaction.user.tag}`
-        );
-      } catch (error) {
-        console.error("Erro ao criar call:", error);
-
-        await interaction.editReply({
-          content:
-            "❌ **Não foi possível criar sua call.**\n\n" +
-            "Verifique se o bot tem a permissão **Gerenciar canais** " +
-            "e se consegue acessar a categoria selecionada.\n\n" +
-            "Tente novamente em instantes."
-        }).catch(() => {});
-      } finally {
-        creatingCalls.delete(interaction.user.id);
-      }
+      const channel = await guild.channels.create(options);
+      activeCalls.set(interaction.user.id, channel.id);
+      await interaction.editReply(
+        `✅ **Sua call foi criada com sucesso!**\\n\\n🔊 **Sala:** ${channel}\\n✦ **Nome:** \`${channel.name}\`\\n\\nEntre na sala e convide seus amigos. Para criar outra, apague esta call primeiro.`
+      );
     }
   } catch (error) {
-    console.error("Erro ao processar interação:", error);
-
-    const message =
-      "❌ Ocorreu um erro ao processar sua solicitação. " +
-      "Verifique as permissões do bot e tente novamente.";
-
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: message,
-        ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: message,
-        ephemeral: true
-      }).catch(() => {});
+    console.error('Erro ao processar interação:', error);
+    const message = '❌ Ocorreu um erro ao processar sua solicitação. Confira as permissões do bot e tente novamente.';
+    try {
+      if (interaction.deferred) await interaction.editReply(message);
+      else if (interaction.replied) await interaction.followUp({ content: message, ephemeral: true });
+      else await interaction.reply({ content: message, ephemeral: true });
+    } catch (replyError) {
+      console.error('Não foi possível responder à interação:', replyError);
     }
   }
 });
 
-// Libera o usuário quando sua sala é excluída.
-client.on("channelDelete", channel => {
+client.on(Events.ChannelDelete, channel => {
   for (const [userId, channelId] of activeCalls.entries()) {
-    if (channelId === channel.id) {
-      activeCalls.delete(userId);
-    }
+    if (channelId === channel.id) activeCalls.delete(userId);
   }
 });
 
 (async () => {
   try {
-    await registerCommands();
+    await registerCommand();
     await client.login(DISCORD_TOKEN);
   } catch (error) {
-    console.error("Não foi possível iniciar o bot:", error);
+    console.error('Falha ao iniciar o bot:', error);
     process.exit(1);
   }
 })();
