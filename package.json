@@ -1,0 +1,9 @@
+{
+  "name": "arcanjo-call-manager",
+  "version": "2.0.0",
+  "description": "Arcanjo Call Manager - painel moderno para criação de calls Discord",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "discord.js": "^14.19.3", "dotenv": "^16.4.7" }
+}
