@@ -1,9 +1,32 @@
 {
-  "name": "arcanjo-call-manager",
-  "version": "2.0.0",
-  "description": "Arcanjo Call Manager - painel moderno para criação de calls Discord",
+  "name": "discord-quest-automation-api",
+  "version": "1.0.0",
+  "description": "Discord Quest Automation Backend API in Node.js & Express",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
-  "engines": { "node": ">=20" },
-  "dependencies": { "discord.js": "^14.19.3", "dotenv": "^16.4.7" }
+  "scripts": {
+    "start": "concurrently -k \"node index.js\" \"node bot.js\"",
+    "dev": "node index.js",
+    "start:api": "node index.js",
+    "start:bot": "node bot.js",
+    "deploy-commands": "node deploy-commands.js"
+  },
+  "keywords": [
+    "discord",
+    "quests",
+    "automation",
+    "api",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "discord.js": "^14.19.3",
+    "concurrently": "^9.1.2"
+  }
 }
